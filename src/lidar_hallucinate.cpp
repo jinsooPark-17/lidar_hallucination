@@ -52,6 +52,7 @@ public:
             lidar_hallucination::VirtualCircle global_circle = msg->circles[i];
             global_circle.x = transformed_point.point.x;
             global_circle.y = transformed_point.point.y;
+            global_circle.life = ros::Time::now() + ros::Duration( msg->circles[i].life.toSec() );
             this->circles_.push_back(global_circle);
         }
         ROS_INFO_STREAM("New object added!");

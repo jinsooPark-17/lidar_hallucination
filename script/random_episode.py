@@ -5,11 +5,11 @@ Exploration episode; Each actions are randomly chosen.
 # Load basic modules
 import os
 import sys
+import copy
 import torch
 import numpy as np
 # Load ros related modules
 import rospy
-from tf.transformations import quaternion_from_euler
 from actionlib import SimpleActionClient
 # Load ros messages
 from sensor_msgs.msg import LaserScan
@@ -17,12 +17,15 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from geometry_msgs.msg import Point, Quaternion
 from lidar_hallucination.msg import VirtualCircle, VirtualCircles
 
+def quaternion_from_euler( r, p, y):
+    return [x, y, z, w]
+
 class BWIbot(object):
     def __init__(self, entity_name, random_episode=False):
         self.entity_name = entity_name
         self.random_episode = random_episode
 
-        rospy.loginfo("Connecting to {}...".format( os.path.join(self.entity_name, "move_base") )
+        rospy.loginfo("Connecting to {}...".format( os.path.join(self.entity_name, "move_base") ))
         self.move_base = SimpleActionClient( os.path.join(self.entity_name, "move_base"), MoveBaseAction )
         connected = self.move_base.wait_for_server( timeout = rospy.Duration(30.0) )
         if not connected:
@@ -45,13 +48,15 @@ class BWIbot(object):
         self.goal.target_pose.header.frame_id = os.path.join(self.entity_name, "level_mux_map")
 
         # Define publisher and subscriber
-        self.pub_action = rospy.Publisher(os.path.join(entity_name, "add_circle"), VirtualCircles)
+        self.pub_action = rospy.Publisher(os.path.join(entity_name, "add_circle"), VirtualCircles, queue_size=10)
         self._sub_scan = rospy.Subscriber(os.path.join(entity_name, "scan_filtered"), LaserScan, self.scan_cb)
 
         # Define common parameters
-        self.done, self.ttd, self.trajectory = False, None, []
+        self.finish, self.ttd, self.trajectory = False, None, []
         self.prev_location = None
         self.states, self.actions, self.rewards, self.done = [], [], [], []
+
+        # Load frozen network
 
     def move(self, x, y, yaw):
         self.goal.target_pose.header.frame_id  = os.path.join(self.entity_name, 'level_mux_map')
@@ -74,7 +79,7 @@ class BWIbot(object):
         # only leaves valid Xs and Ys
         #  0.0m < PXs < 12.8m
         # -6.4m < PYs < +6.4m
-        valid_idx = np.logical_and(Xs < 12.8, Ys > -6.4, Ys < 6.4)
+        valid_idx = np.logical_and(Xs < 12.8, np.abs(Ys) < 6.4)
         PXs = (Xs[valid_idx] / self.resolution).astype(np.int) + (self.rpx)
         PYs = (Ys[valid_idx] / self.resolution).astype(np.int) + (self.rpx + 64)
 
@@ -95,8 +100,14 @@ class BWIbot(object):
         
         # Send action to hallucination module
         out_msg = VirtualCircles()
-        c1 = VirtualCircle(radius=1.0, x=action[0], y=action[1], life=rospy.Duration(action[2]))
-        c2 = virtualCircle(radius=1.0, x=action[3], y=action[4], life=rospy.Duration(action[5]))
+        c1 = VirtualCircle( radius = min(1.0, np.linalg.norm([action[0], action[1])),
+                            x      = action[0], 
+                            y      = action[1], 
+                            life   = rospy.Duration(action[2]))
+        c2 = VirtualCircle( radius = min(1.0, np.linalg.norm([action[3], action[4])), 
+                            x      = action[3], 
+                            y      = action[4], 
+                            life   = rospy.Duration(action[5]))
         out_msg.circles = [c1, c2]
         self.pub_action.publish(out_msg)
 
@@ -120,7 +131,7 @@ class BWIbot(object):
         self.scan_msg = scan_msg
 
     def start_cb(self):
-        self.done = False
+        self.finish = False
         self.start = rospy.Time.now()
 
         state = self.get_state( self.scan_msg )
@@ -131,33 +142,33 @@ class BWIbot(object):
 
     def periodic_cb(self, feedback):
         if self.prev_location is not None:
-            curr_location = feedback.base_position
-            if (curr_location.header.stamp - self.prev_location.header.stamp).to_sec() >= 5.0:
+            self.curr_location = feedback.base_position
+            if (self.curr_location.header.stamp - self.prev_location.header.stamp).to_sec() >= 5.0:
                 state = self.get_state( self.scan_msg )
                 action = self.get_action( state )
-                reward = self.get_reward(prev_location, curr_location)
+                reward = self.get_reward(self.prev_location, self.curr_location)
 
                 self.states.append(state)
                 self.actions.append(action)
                 self.rewards.append(reward)
                 self.done.append(0)
 
-                self.prev_location = curr_location
+                self.prev_location = copy.deepcopy(self.curr_location)
         else:
             self.prev_location = feedback.base_position
         pass
 
-    def finish_cb(self):
-        self.done = True
+    def finish_cb(self, state, result):
+        self.finish = True
         self.ttd = (rospy.Time.now() - self.start).to_sec()
 
         state = self.get_state( self.scan_msg )
-        reward = self.get_reward() + 10.0 # Success advantage
+        reward = self.get_reward(prev_location, curr_location) + 10.0 # Success advantage
 
         self.states.append(state)
         self.rewards.append(reward)
         self.done.append(1)
-        rospy.log_info("{} finished".format(self.entity_name))
+        rospy.loginfo("{} finished".format(self.entity_name))
 
 if __name__ == '__main__':
     import matplotlib
