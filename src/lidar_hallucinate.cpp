@@ -20,6 +20,7 @@ public:
 
         // Get parameters from parameter server
         ros::param::get("amcl/global_frame_id", this->mapFrame_);
+        ros::param::get("amcl/base_frame_id", this->baseFrame_);
         ros::param::param<std::string>("add_circle_topic", addCircleTopic, "add_circle");
         this->nh_.param<std::string>("input_scan_topic", inputScanTopic, "scan_filtered");
         this->nh_.param<std::string>("output_scan_topic", outputScanTopic, "scan_hallucinated");
@@ -38,9 +39,20 @@ public:
 
     void bodyCallback(const lidar_hallucination::VirtualCircles::ConstPtr& msg){
         // Read and store new virtual circles from the message
+        this->tfStamped_ = this->tfBuffer_.lookupTransform(this->mapFrame_, this->baseFrame_, ros::Time(0));
+        geometry_msgs::PointStamped local_point, transformed_point;
         for (int i=0; i < msg->circles.size(); i++){
             // Convert relative position to global position
-            this->circles_.push_back(msg->circles[i]);
+            local_point.header.stamp = ros::Time::now();
+            local_point.header.frame_id = this->mapFrame_;
+            local_point.point.x = msg->circles[i].x;
+            local_point.point.y = msg->circles[i].y;
+            tf2::doTransform( local_point, transformed_point, this->tfStamped_);
+            
+            lidar_hallucination::VirtualCircle global_circle = msg->circles[i];
+            global_circle.x = transformed_point.point.x;
+            global_circle.y = transformed_point.point.y;
+            this->circles_.push_back(global_circle);
         }
         ROS_INFO_STREAM("New object added!");
     }
@@ -126,6 +138,7 @@ private:
     // parameters
     ros::NodeHandle nh_;
     std::string mapFrame_;
+    std::string baseFrame_;
     ros::Publisher pubScan_;
     ros::Subscriber subBody_;
     ros::Subscriber subLidar_;
