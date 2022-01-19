@@ -20,7 +20,7 @@ public:
 
         // Get parameters from parameter server
         ros::param::get("amcl/global_frame_id", this->mapFrame_);
-        ros::param::param<std::string>("add_circle", addCircleTopic, "add_circle");
+        ros::param::param<std::string>("add_circle_topic", addCircleTopic, "add_circle");
         this->nh_.param<std::string>("input_scan_topic", inputScanTopic, "scan_filtered");
         this->nh_.param<std::string>("output_scan_topic", outputScanTopic, "scan_hallucinated");
 
@@ -39,6 +39,7 @@ public:
     void bodyCallback(const lidar_hallucination::VirtualCircles::ConstPtr& msg){
         // Read and store new virtual circles from the message
         for (int i=0; i < msg->circles.size(); i++){
+            // Convert relative position to global position
             this->circles_.push_back(msg->circles[i]);
         }
         ROS_INFO_STREAM("New object added!");
