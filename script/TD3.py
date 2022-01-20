@@ -124,12 +124,12 @@ class TD3(object):
         torch.save( self.critic_optim.state_dict(), filename+"_critic_optimizer")
 
     def load(self, filename):
-        self.actor.load_state_dict(torch.load(filename+"_actor"))
-        self.actor.load_state_dict(torch.load(filename+"_actor_optimizer"))
+        self.actor.load_state_dict(torch.load(filename+"_actor", map_location=device))
+        self.actor_optim.load_state_dict(torch.load(filename+"_actor_optimizer", map_location=device))
         self.actor_target = copy.deepcopy(self.actor)
 
-        self.critic.load_state_dict(torch.load(filename+"_critic"))
-        self.critic_optimizer.load_state_dict(torch.load(filename+"_critic_optimizer"))
+        self.critic.load_state_dict(torch.load(filename+"_critic", map_location=device))
+        self.critic_optim.load_state_dict(torch.load(filename+"_critic_optimizer", map_location=device))
         self.critic_target = copy.deepcopy(self.critic)
 
     def train(self, replay_buffer, batch_size=256):

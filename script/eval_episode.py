@@ -24,7 +24,11 @@ from lidar_hallucination.msg import VirtualCircle, VirtualCircles
 import TD3
 
 def quaternion_from_euler( r, p, y):
-    return [x, y, z, w]
+    qx = np.sin(r/2) * np.cos(p/2) * np.cos(y/2) - np.cos(r/2) * np.sin(p/2) * np.sin(y/2)
+    qy = np.cos(r/2) * np.sin(p/2) * np.cos(y/2) + np.sin(r/2) * np.cos(p/2) * np.sin(y/2)
+    qz = np.cos(r/2) * np.cos(p/2) * np.sin(y/2) - np.sin(r/2) * np.sin(p/2) * np.cos(y/2)
+    qw = np.cos(r/2) * np.cos(p/2) * np.cos(y/2) + np.sin(r/2) * np.sin(p/2) * np.sin(y/2)
+    return [qx, qy, qz, qw]
 
 class BWIbot(object):
     def __init__(self, entity_name, random_episode=False,
@@ -115,11 +119,11 @@ class BWIbot(object):
         
         # Send action to hallucination module
         out_msg = VirtualCircles()
-        c1 = VirtualCircle( radius = min(1.0, np.linalg.norm([action[0], action[1])),
+        c1 = VirtualCircle( radius = min(1.0, np.linalg.norm([action[0], action[1]])),
                             x      = action[0], 
                             y      = action[1], 
                             life   = rospy.Duration(action[2]))
-        c2 = VirtualCircle( radius = min(1.0, np.linalg.norm([action[3], action[4])), 
+        c2 = VirtualCircle( radius = min(1.0, np.linalg.norm([action[3], action[4]])), 
                             x      = action[3], 
                             y      = action[4], 
                             life   = rospy.Duration(action[5]))
@@ -197,7 +201,7 @@ class BWIbot(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--explore", help="Run random episode")
+    parser.add_argument("--explore", action="store_true", help="Run random episode")
     parser.add_argument("--max_action", default=10.0, type=float)
     parser.add_argument("--expl_noise", default=0.01, type=float)
     
