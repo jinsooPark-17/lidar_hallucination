@@ -35,6 +35,9 @@ class BWIbot(object):
                  max_action = 10.0, expl_noise = 0.01, action_dim = 6):
         self.entity_name = entity_name
         self.random_episode = random_episode
+        self.max_action = max_action
+        self.expl_noise = expl_noise
+        self.action_dim = action_dim
 
         rospy.loginfo("Connecting to {}...".format( os.path.join(self.entity_name, "move_base") ))
         self.move_base = SimpleActionClient( os.path.join(self.entity_name, "move_base"), MoveBaseAction )
@@ -113,9 +116,9 @@ class BWIbot(object):
             action = (torch.randn(6, dtype=torch.float)*5.0).abs().clip(0.0,10.0)
         else:
             action = (self.policy.select_action( state )
-                      + np.random.normal(0, max_action * expl_noise, size = action_dim)
-            ).clip(-max_action, max_action).abs()
-            pass
+                      + np.random.normal(0, self.max_action * self.expl_noise, size = self.action_dim)
+            ).clip(-self.max_action, self.max_action)
+            action = np.abs( action )
         
         # Send action to hallucination module
         out_msg = VirtualCircles()
@@ -182,7 +185,7 @@ class BWIbot(object):
         self.ttd = (rospy.Time.now() - self.start).to_sec()
 
         state = self.get_state( self.scan_msg )
-        reward = self.get_reward(prev_location, curr_location) + 10.0 # Success advantage
+        reward = self.get_reward( self.prev_location, self.curr_location) + 10.0 # Success advantage
 
         self.states.append(state)
         self.rewards.append(reward)
@@ -226,5 +229,10 @@ if __name__ == '__main__':
     marvin.move( args.x1, args.y1, args.yaw1)
     roberto.move(args.x2, args.y2, args.yaw2)
 
+    begin = rospy.Time.now()
     while marvin.finish is not True or roberto.finish is not True:
         rospy.sleep(1.0)
+        if (rospy.Time.now() - begin).to_sec() > 120:
+            break
+    marvin.move_base.cancel_all_goals()
+    roberto.move_base.cancel_all_goals()
