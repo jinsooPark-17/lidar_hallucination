@@ -234,5 +234,5 @@ if __name__ == '__main__':
         rospy.sleep(1.0)
         if (rospy.Time.now() - begin).to_sec() > 120:
             break
-    marvin.move_base.cancel_all_goals()
-    roberto.move_base.cancel_all_goals()
+    # marvin.move_base.cancel_all_goals()
+    # roberto.move_base.cancel_all_goals()
