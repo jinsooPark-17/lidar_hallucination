@@ -1,0 +1,4 @@
+action_dim: 6       # Number of actions, number of circles := dim(action) / 3
+max_action: 10.0    # clip(-max_action, max_action)
+expl_noise: 0.01    # Noise of acquired action
+t_interval: 5       # Interval of hallucination

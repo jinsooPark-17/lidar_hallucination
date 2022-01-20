@@ -5,23 +5,29 @@ Exploration episode; Each actions are randomly chosen.
 # Load basic modules
 import os
 import sys
+import uuid
 import copy
 import torch
 import numpy as np
+import pickle
 # Load ros related modules
 import rospy
+import rospkg
 from actionlib import SimpleActionClient
 # Load ros messages
 from sensor_msgs.msg import LaserScan
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from geometry_msgs.msg import Point, Quaternion
 from lidar_hallucination.msg import VirtualCircle, VirtualCircles
+# Load custom TD3 network
+import TD3
 
 def quaternion_from_euler( r, p, y):
     return [x, y, z, w]
 
 class BWIbot(object):
-    def __init__(self, entity_name, random_episode=False):
+    def __init__(self, entity_name, random_episode=False,
+                 max_action = 10.0, expl_noise = 0.01, action_dim = 6):
         self.entity_name = entity_name
         self.random_episode = random_episode
 
@@ -31,6 +37,13 @@ class BWIbot(object):
         if not connected:
             rospy.logerr("{}/move_base does not respond within 30 seconds. Aborting...".format(self.entity_name))
             sys.exit()
+
+        # Load frozen network
+        self.policy = TD3.TD3()
+        pkg_dir     = rospkg.RosPack().get_path("lidar_hallucination")
+        network_dir = os.path.join(pkg_dir, "model", "td3")
+        self.data_storage = os.path.join(pkg_dir, "result")
+        self.policy.load(network_dir)
 
         # define state generation parameters
         self.resolution = 0.1
@@ -55,8 +68,6 @@ class BWIbot(object):
         self.finish, self.ttd, self.trajectory = False, None, []
         self.prev_location = None
         self.states, self.actions, self.rewards, self.done = [], [], [], []
-
-        # Load frozen network
 
     def move(self, x, y, yaw):
         self.goal.target_pose.header.frame_id  = os.path.join(self.entity_name, 'level_mux_map')
@@ -96,6 +107,9 @@ class BWIbot(object):
         if self.random_episode is True:
             action = (torch.randn(6, dtype=torch.float)*5.0).abs().clip(0.0,10.0)
         else:
+            action = (self.policy.select_action( state )
+                      + np.random.normal(0, max_action * expl_noise, size = action_dim)
+            ).clip(-max_action, max_action).abs()
             pass
         
         # Send action to hallucination module
@@ -170,14 +184,28 @@ class BWIbot(object):
         self.done.append(1)
         rospy.loginfo("{} finished".format(self.entity_name))
 
+        # pickle result
+        result = {"state"   : self.states, 
+                  "action"  : self.actions, 
+                  "reward"  : self.rewards, 
+                  "not_done": self.done}
+
+        filename = "{}.pickle".format(str(uuid.uuid4()))
+        with open( os.path.join(self.data_storage, filename), 'wb') as outfile:
+            pickle.dump(result, outfile)
+
 if __name__ == '__main__':
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
     rospy.init_node('random_episode_py')
     rospy.sleep(1.0)
 
     marvin = BWIbot('marvin')
+    roberto = BWIbot('roberto')
+
+    print(f"Experiment number {sys.argv[1]}")
+    rospy.sleep(2.0)
+
+    while marvin.finish is not True or roberto.finish is not True:
+        rospy.sleep(1.0)
 
     for i in range(1):
         scan = marvin.scan_msg
