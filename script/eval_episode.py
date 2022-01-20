@@ -10,6 +10,7 @@ import copy
 import torch
 import numpy as np
 import pickle
+import argparse
 # Load ros related modules
 import rospy
 import rospkg
@@ -195,20 +196,31 @@ class BWIbot(object):
             pickle.dump(result, outfile)
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--explore", help="Run random episode")
+    parser.add_argument("--max_action", default=10.0, type=float)
+    parser.add_argument("--expl_noise", default=0.01, type=float)
+    
+    parser.add_argument("--x1",   default=-7.00, type=float)
+    parser.add_argument("--y1",   default= 0.00, type=float)
+    parser.add_argument("--yaw1", default= 0.00, type=float)
+    
+    parser.add_argument("--x2",   default= 7.00, type=float)
+    parser.add_argument("--y2",   default= 0.00, type=float)
+    parser.add_argument("--yaw2", default= 3.14, type=float)
+    args = parser.parse_args()
+
     rospy.init_node('random_episode_py')
     rospy.sleep(1.0)
 
-    marvin = BWIbot('marvin')
-    roberto = BWIbot('roberto')
+    marvin  = BWIbot('marvin',  random_episode=args.explore, max_action = args.max_action, expl_noise = args.expl_noise, action_dim = 6)
+    roberto = BWIbot('roberto', random_episode=args.explore, max_action = args.max_action, expl_noise = args.expl_noise, action_dim = 6)
 
     print(f"Experiment number {sys.argv[1]}")
     rospy.sleep(2.0)
 
+    marvin.move( args.x1, args.y1, args.yaw1)
+    roberto.move(args.x2, args.y2, args.yaw2)
+
     while marvin.finish is not True or roberto.finish is not True:
         rospy.sleep(1.0)
-
-    for i in range(1):
-        scan = marvin.scan_msg
-        state = marvin.get_state(scan)
-
-        plt.imsave("{}.png".format(i), state, dpi=300, cmap='gray')
